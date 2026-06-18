@@ -192,7 +192,7 @@ The implementation may still expose lower-level handler registration for applica
 
 ### Async Dispatch Replays The Selected Pipeline
 
-Async adapters will serialize enough information to execute the same command through the selected pipeline later. The durable Oban adapter will store command module, command params, metadata, and pipeline name. Runtime context is never serialized. The Task adapter can keep the command struct in memory because it is non-durable, but it still creates a fresh execution context when the command runs.
+Async adapters will serialize enough information to execute the same command through the selected pipeline later. The durable Oban adapter will store bus module, command module, command params, metadata, and pipeline name. Runtime context is never serialized. The Task adapter can keep the command struct in memory because it is non-durable, but it still creates a fresh execution context when the command runs.
 
 Alternative considered: async adapters call handlers directly. That would skip middleware behavior and make async commands observably different from sync commands.
 

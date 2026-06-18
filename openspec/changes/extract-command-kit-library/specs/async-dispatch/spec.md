@@ -27,7 +27,7 @@ The library SHALL provide a durable async adapter for applications that use Oban
 
 #### Scenario: Oban adapter enqueues command
 - **WHEN** async dispatch uses the Oban adapter
-- **THEN** the adapter inserts an Oban job containing command module, serialized command params, metadata, and pipeline name
+- **THEN** the adapter inserts an Oban job containing bus module, command module, serialized command params, metadata, and pipeline name
 
 #### Scenario: Oban worker executes command
 - **WHEN** the Oban worker performs the job
@@ -53,7 +53,7 @@ Durable async adapters MUST serialize commands using declared command parameters
 
 #### Scenario: Command has typed params
 - **WHEN** an Oban job is created for a typed command
-- **THEN** only declared command params, metadata, and pipeline name are persisted in the job args
+- **THEN** only bus module, command module, declared command params, metadata, and pipeline name are persisted in the job args
 
 #### Scenario: Command params include supported value types
 - **WHEN** an Oban job is created for a command containing strings, integers, booleans, decimals, dates, datetimes, and maps/lists composed from supported values

@@ -10,18 +10,19 @@ defmodule CommandKit.Serialization do
 
   @type job_args :: map()
 
-  @spec dump_job(module(), struct(), keyword() | map(), atom()) :: job_args()
-  def dump_job(bus, command, metadata, pipeline) do
+  @spec dump_job(module(), struct(), atom()) :: job_args()
+  def dump_job(bus, command, pipeline) do
     %{
       "bus_module" => Atom.to_string(bus),
       "command_module" => Atom.to_string(command.__struct__),
       "params" => dump_command_params(command),
-      "metadata" => dump_metadata(metadata),
+      "command_id" => command.command_id,
+      "metadata" => dump_metadata(command.metadata),
       "pipeline" => Atom.to_string(pipeline)
     }
   end
 
-  @spec load_job(job_args()) :: {module(), struct(), map() | keyword(), atom()}
+  @spec load_job(job_args()) :: {module(), struct(), atom()}
   def load_job(args) when is_map(args) do
     bus = module_from_string!(Map.fetch!(args, "bus_module"))
     command_module = module_from_string!(Map.fetch!(args, "command_module"))
@@ -30,8 +31,12 @@ defmodule CommandKit.Serialization do
     metadata = load_metadata(Map.fetch!(args, "metadata"))
 
     case command_module.new(params) do
-      {:ok, command} -> {bus, command, metadata, pipeline}
-      {:error, error} -> raise SerializationError, message: Exception.message(error)
+      {:ok, command} ->
+        command = %{command | command_id: Map.fetch!(args, "command_id"), metadata: metadata}
+        {bus, command, pipeline}
+
+      {:error, error} ->
+        raise SerializationError, message: Exception.message(error)
     end
   end
 
@@ -53,17 +58,19 @@ defmodule CommandKit.Serialization do
     |> Map.new()
   end
 
-  @spec dump_metadata(keyword() | map()) :: list()
-  def dump_metadata(metadata) when is_list(metadata) or is_map(metadata) do
+  @spec dump_metadata(CommandKit.Metadata.t()) :: list()
+  def dump_metadata(%CommandKit.Metadata{} = metadata) do
     metadata
+    |> CommandKit.Metadata.to_map()
     |> Enum.map(fn {key, value} -> %{"key" => dump_key(key), "value" => dump_value(value)} end)
   end
 
-  @spec load_metadata(list()) :: map()
+  @spec load_metadata(list()) :: CommandKit.Metadata.t()
   def load_metadata(entries) when is_list(entries) do
     entries
     |> Enum.map(fn %{"key" => key, "value" => value} -> {load_key(key), load_value(value)} end)
     |> Map.new()
+    |> CommandKit.Metadata.from_flat_map()
   end
 
   def dump_value(nil), do: nil
@@ -84,9 +91,20 @@ defmodule CommandKit.Serialization do
   def dump_value(value) when is_list(value), do: Enum.map(value, &dump_value/1)
 
   def dump_value(value) when is_map(value) do
-    value
-    |> Enum.map(fn {key, nested} -> {dump_map_key(key), dump_value(nested)} end)
-    |> Map.new()
+    if Enum.all?(Map.keys(value), &is_binary/1) do
+      value
+      |> Enum.map(fn {key, nested} -> {key, dump_value(nested)} end)
+      |> Map.new()
+    else
+      # Integer keys would be silently stringified by JSON encoding, so maps
+      # containing them are dumped as an entry list that round-trips both
+      # key types.
+      %{
+        "__command_kit_type__" => "map_entries",
+        "entries" =>
+          Enum.map(value, fn {key, nested} -> [dump_map_key(key), dump_value(nested)] end)
+      }
+    end
   end
 
   def dump_value(value) do
@@ -103,6 +121,10 @@ defmodule CommandKit.Serialization do
       {:ok, datetime, _offset} -> datetime
       {:error, reason} -> raise SerializationError, message: "invalid datetime #{inspect(reason)}"
     end
+  end
+
+  def load_value(%{"__command_kit_type__" => "map_entries", "entries" => entries}) do
+    Map.new(entries, fn [key, value] -> {key, load_value(value)} end)
   end
 
   def load_value(value) when is_list(value), do: Enum.map(value, &load_value/1)
@@ -128,8 +150,7 @@ defmodule CommandKit.Serialization do
   defp load_key(%{"type" => "atom", "value" => value}), do: atom_from_string!(value)
   defp load_key(%{"type" => "string", "value" => value}), do: value
 
-  defp dump_map_key(key) when is_binary(key), do: key
-  defp dump_map_key(key) when is_integer(key), do: Integer.to_string(key)
+  defp dump_map_key(key) when is_binary(key) or is_integer(key), do: key
 
   defp dump_map_key(key) do
     raise SerializationError, message: "unsupported map key #{inspect(key)}"

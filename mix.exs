@@ -56,10 +56,12 @@ defmodule CommandKit.MixProject do
       extras: [
         "README.md",
         "docs/guides/commands.md",
+        "docs/guides/metadata.md",
         "docs/guides/context.md",
         "docs/guides/pipelines-and-middleware.md",
         "docs/guides/async.md",
-        "docs/guides/testing.md"
+        "docs/guides/testing.md",
+        "docs/guides/migration.md"
       ],
       groups_for_extras: [
         Guides: Path.wildcard("docs/guides/*.md")

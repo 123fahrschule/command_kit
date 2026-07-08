@@ -2,7 +2,7 @@
 
 `CommandKit.Context` is runtime-only state for one command execution. It is
 created by the bus, passed through middleware, and optionally received by
-handlers that implement `execute/3`.
+handlers that implement `execute/2` (command, context).
 
 Context is not command data and is not serialized by async adapters.
 
@@ -59,7 +59,7 @@ end
 Example handler:
 
 ```elixir
-def execute(command, metadata, context) do
+def execute(command, context) do
   repo = CommandKit.Context.fetch!(context, {MyApp, :repo})
   clock = CommandKit.Context.fetch!(context, {MyApp, :clock})
 
@@ -81,5 +81,6 @@ end
 - telemetry correlation state
 - authorization state
 
-Keep command data in commands, caller/audit data in metadata, and execution
-services in context.
+Keep command data in command params, caller/audit data in the command's
+metadata (see the [Metadata guide](metadata.md)), and execution services in
+context.

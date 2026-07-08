@@ -5,7 +5,7 @@ defmodule CommandKit.Ecto.Command do
   Command modules still use CommandKit's command DSL:
 
       defmodule MyApp.Command do
-        use CommandKit.Ecto.Command
+        use CommandKit.Ecto.Command, source: "de.123fahrschule:my_app"
       end
 
       defmodule MyApp.Commands.RequestAbsence do
@@ -19,22 +19,16 @@ defmodule CommandKit.Ecto.Command do
         end
       end
 
+  The required `:source` option is the application-wide URN prefix used for
+  command identity and correlation (see `CommandKit.Metadata`). It must be a
+  compile-time string.
+
   Ecto remains an implementation detail. Command modules do not define
   `embedded_schema` or `changeset` functions.
   """
 
   defmacro __using__(opts \\ []) do
     opts = Keyword.put_new(opts, :builder, CommandKit.Ecto.Command.Builder)
-    escaped_opts = Macro.escape(opts)
-
-    quote do
-      defmacro __using__(command_opts \\ []) do
-        opts = Keyword.merge(unquote(escaped_opts), command_opts)
-
-        quote do
-          use CommandKit.Core.Command.Schema, unquote(Macro.escape(opts))
-        end
-      end
-    end
+    CommandKit.Core.Command.define_base(opts, "CommandKit.Ecto.Command")
   end
 end

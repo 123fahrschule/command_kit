@@ -19,14 +19,14 @@ config :my_app, MyApp.CommandBus,
 ```
 
 ```elixir
-MyApp.CommandBus.dispatch_async(command, metadata, pipeline: :background)
+MyApp.CommandBus.dispatch_async(command, pipeline: :background)
 ```
 
 ## Oban Adapter
 
 Oban dispatch is durable. Job args include bus module, command module,
-serialized command params, metadata, and pipeline name. Runtime context is not
-serialized and is rebuilt at execution time.
+serialized command params, command identity, command metadata, and pipeline
+name. Runtime context is not serialized and is rebuilt at execution time.
 
 ```elixir
 config :my_app, MyApp.CommandBus,
@@ -34,12 +34,17 @@ config :my_app, MyApp.CommandBus,
 ```
 
 ```elixir
-MyApp.CommandBus.dispatch_async(command, metadata, pipeline: :background)
+MyApp.CommandBus.dispatch_async(command, pipeline: :background)
 ```
 
 ## Serialization
 
-Durable serialization supports:
+The command's identity and metadata survive the queue verbatim: `command_id`,
+causation and correlation ids, `enacted_by`, both timestamps, and all
+additional metadata pairs are restored exactly as dispatched — construction
+defaults do not regenerate on load.
+
+Durable serialization supports these param and metadata values:
 
 - strings
 - integers

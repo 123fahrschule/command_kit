@@ -1,15 +1,17 @@
 # Commands
 
-Commands represent a single application intent. They contain command data only;
-caller metadata and execution services belong elsewhere.
+Commands represent a single application intent. They carry domain parameters,
+an identity (`command_id` plus a kebab-case command name), and correlation
+metadata (see the [Metadata guide](metadata.md)). Execution services belong
+in the runtime context.
 
 ## Command Base Modules
 
-Applications define a local base module:
+Applications define a local base module with the service's URN source:
 
 ```elixir
 defmodule MyApp.Command do
-  use CommandKit.Core.Command
+  use CommandKit.Core.Command, source: "de.123fahrschule:my_app"
 end
 ```
 
@@ -17,11 +19,12 @@ or:
 
 ```elixir
 defmodule MyApp.Command do
-  use CommandKit.Ecto.Command
+  use CommandKit.Ecto.Command, source: "de.123fahrschule:my_app"
 end
 ```
 
-`CommandKit.Core.Command` validates already-typed values.
+The `:source` option is required — it prefixes the URNs used for causation
+and correlation. `CommandKit.Core.Command` validates already-typed values.
 `CommandKit.Ecto.Command` uses Ecto internally to cast adapter input such as
 form or JSON strings. Command modules do not expose `Ecto.Schema`,
 `embedded_schema`, or `changeset`.
@@ -39,6 +42,8 @@ end
 
 Fields are required by default. Use `optional: true` only for data that does
 not change the command intent, such as comments, references, or external IDs.
+The names `:metadata` and `:command_id` are reserved by CommandKit and cannot
+be declared as params.
 
 Supported command field types in v1:
 
@@ -67,6 +72,18 @@ Command.new!(attrs)
 `new/1` returns `{:ok, command}` or `{:error, %CommandKit.CommandError{}}`.
 `new!/1` returns the command or raises the same `CommandKit.CommandError`.
 
+Construction also generates the command's identity: a fresh `command_id`
+(UUID) and chain-start metadata. The command name defaults to the module's
+last segment in kebab-case (`RecordPayout` → `"record-payout"`) and can be
+overridden by defining `command_name/0` — overrides must stay kebab-case,
+underscores raise at construction time. Enrich metadata with the pipe API:
+
+```elixir
+MyApp.Commands.RecordPayout.new!(attrs)
+|> CommandKit.Command.enacted_by("user-123")
+|> CommandKit.Command.put_metadata(:tenant_id, "abc")
+```
+
 Construction errors are command-level errors:
 
 ```elixir
@@ -93,16 +110,19 @@ Declare the handler next to the command:
 handler MyApp.FundingRequests.RecordPayout
 ```
 
-The bus calls `execute/3` when the handler exports it, otherwise it falls back
-to `execute/2`.
+The bus calls `execute/1` when the handler exports it, otherwise it falls back
+to `execute/2` with the runtime context. Metadata is read from the command:
 
 ```elixir
-def execute(command, metadata), do: :ok
+def execute(command) do
+  command.metadata.enacted_by
+  {:ok, %{id: 123}}
+end
 
-def execute(command, metadata, context), do: {:ok, %{id: 123}}
+def execute(command, context), do: {:ok, %{id: 123}}
 ```
 
-Use `execute/3` only when the handler needs runtime context.
+Use `execute/2` only when the handler needs runtime context.
 
 Handlers should return the command result, not the command itself. Recommended
 result shapes are `:ok`, `{:ok, value}`, and `{:error, reason}`.

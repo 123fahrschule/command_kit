@@ -3,8 +3,9 @@ defmodule CommandKit.Middleware.Authorization do
   Authorizes commands through an application authorizer or protocol.
 
   Configure `authorizer: MyApp.Authorizer` to call a module. The module may
-  export `authorize/3` or `authorize/2`. Without an authorizer, the
-  `CommandKit.Authorization` protocol is used.
+  export `authorize/2` (command, context) or `authorize/1` (command).
+  Without an authorizer, the `CommandKit.Authorization` protocol is used.
+  Authorizers read the actor from `command.metadata.enacted_by`.
   """
 
   @behaviour CommandKit.Middleware
@@ -20,19 +21,21 @@ defmodule CommandKit.Middleware.Authorization do
   defp authorize(pipeline, opts) do
     case Keyword.get(opts, :authorizer) do
       nil ->
-        CommandKit.Authorization.authorize(pipeline.command, pipeline.metadata, pipeline.context)
+        CommandKit.Authorization.authorize(pipeline.command, pipeline.context)
 
       authorizer ->
-        cond do
-          function_exported?(authorizer, :authorize, 3) ->
-            authorizer.authorize(pipeline.command, pipeline.metadata, pipeline.context)
+        Code.ensure_loaded?(authorizer)
 
+        cond do
           function_exported?(authorizer, :authorize, 2) ->
-            authorizer.authorize(pipeline.command, pipeline.metadata)
+            authorizer.authorize(pipeline.command, pipeline.context)
+
+          function_exported?(authorizer, :authorize, 1) ->
+            authorizer.authorize(pipeline.command)
 
           true ->
             raise CommandKit.ConfigurationError,
-                  "#{inspect(authorizer)} must export authorize/2 or authorize/3"
+                  "#{inspect(authorizer)} must export authorize/1 or authorize/2"
         end
     end
   end

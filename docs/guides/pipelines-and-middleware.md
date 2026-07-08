@@ -23,7 +23,7 @@ config :my_app, MyApp.CommandBus,
 Select a pipeline at dispatch time:
 
 ```elixir
-MyApp.CommandBus.dispatch(command, metadata, pipeline: :system)
+MyApp.CommandBus.dispatch(command, pipeline: :system)
 ```
 
 ## Middleware Contract
@@ -74,7 +74,7 @@ defmodule MyApp.CommandMiddleware.Audit do
       command: pipeline.command.__struct__,
       pipeline: pipeline.pipeline,
       result: next_pipeline.result,
-      metadata: if(include_metadata?, do: pipeline.metadata, else: %{})
+      metadata: if(include_metadata?, do: CommandKit.Pipeline.metadata(pipeline), else: %{})
     })
 
     next_pipeline
@@ -91,9 +91,10 @@ input; the pipeline carries execution state around it.
 Fields:
 
 - `:command` - the current command struct. Initially this is the command passed
-  to `dispatch/3`.
-- `:metadata` - caller and audit metadata passed to `dispatch/3`. It may be a
-  map or keyword list. Keep business parameters in the command, not metadata.
+  to `dispatch/2`. Its metadata is the single source of truth — read it with
+  `CommandKit.Pipeline.metadata/1` and change it with
+  `CommandKit.Pipeline.put_metadata/3`, which updates the command so handlers
+  observe the change.
 - `:context` - runtime-only `CommandKit.Context.t()` for dependencies and
   middleware state. Context is not serialized for async dispatch.
 - `:result` - the current command result. It is `nil` until a middleware halts
@@ -105,14 +106,14 @@ Fields:
   `use CommandKit.Bus`, not a process or handler.
 - `:pipeline` - the selected pipeline name, for example `:default` or `:system`.
 
-Most middleware should treat `:command`, `:bus`, and `:pipeline` as read-only.
-Changing `:metadata`, `:context`, `:result`, or `:halted?` is valid when that is
-the middleware's explicit responsibility.
+Most middleware should treat `:bus` and `:pipeline` as read-only. Changing the
+command's metadata (via `put_metadata/3`), `:context`, `:result`, or `:halted?`
+is valid when that is the middleware's explicit responsibility.
 
 For example, when code calls:
 
 ```elixir
-MyApp.CommandBus.dispatch(command, metadata, pipeline: :system)
+MyApp.CommandBus.dispatch(command, pipeline: :system)
 ```
 
 middleware receives `pipeline.bus == MyApp.CommandBus` and
@@ -138,7 +139,17 @@ CommandKit.Pipeline.put_context(pipeline, {MyApp, :repo}, MyApp.Repo)
 ```
 
 Use it for dependency injection or values that should be visible to later
-middleware and handlers implementing `execute/3`.
+middleware and handlers implementing `execute/2`.
+
+`CommandKit.Pipeline.put_metadata/3` writes a metadata value onto the command
+in the pipeline:
+
+```elixir
+CommandKit.Pipeline.put_metadata(pipeline, :request_id, request_id)
+```
+
+Because the command itself is updated, handlers see the change via
+`command.metadata`.
 
 `CommandKit.Pipeline.update_context/4` updates a runtime value or initializes it
 when it is missing:
@@ -200,14 +211,10 @@ downstream failures hard to understand.
 
 ```elixir
 def call(pipeline, next, _opts) do
-  next_pipeline = next.(pipeline)
-  metadata = put_metadata(next_pipeline.metadata, :audited?, true)
-
-  %{next_pipeline | metadata: metadata}
+  pipeline
+  |> CommandKit.Pipeline.put_metadata(:audited?, true)
+  |> next.()
 end
-
-defp put_metadata(metadata, key, value) when is_map(metadata), do: Map.put(metadata, key, value)
-defp put_metadata(metadata, key, value) when is_list(metadata), do: Keyword.put(metadata, key, value)
 ```
 
 ### Halt
@@ -366,14 +373,15 @@ runs. It continues on `:ok` and halts with `{:error, reason}` otherwise.
 
 Options:
 
-- `:authorizer` - optional module exporting `authorize/3` or `authorize/2`.
+- `:authorizer` - optional module exporting `authorize/2` or `authorize/1`.
 
-`authorize/3` receives command, metadata, and context:
+Authorizers read the actor from the command's metadata. `authorize/2`
+receives command and context:
 
 ```elixir
 defmodule MyApp.Authorizer do
-  def authorize(command, metadata, context) do
-    actor = metadata[:actor]
+  def authorize(command, context) do
+    actor = command.metadata.enacted_by
 
     if MyApp.Permissions.allowed?(actor, command, context) do
       :ok
@@ -384,12 +392,12 @@ defmodule MyApp.Authorizer do
 end
 ```
 
-`authorize/2` receives only command and metadata:
+`authorize/1` receives only the command:
 
 ```elixir
 defmodule MyApp.Authorizer do
-  def authorize(command, metadata) do
-    if metadata[:role] == :admin do
+  def authorize(command) do
+    if command.metadata[:role] == :admin do
       :ok
     else
       {:error, :unauthorized}
@@ -403,8 +411,8 @@ protocol. The default implementation for `Any` allows the command.
 
 ```elixir
 defimpl CommandKit.Authorization, for: MyApp.Commands.RecordPayout do
-  def authorize(command, metadata, context) do
-    MyApp.FundingRequests.Policy.authorize(command, metadata, context)
+  def authorize(command, context) do
+    MyApp.FundingRequests.Policy.authorize(command, context)
   end
 end
 ```
@@ -440,9 +448,10 @@ application code.
 
 ## Idempotency
 
-`CommandKit.Middleware.Idempotency` reads `metadata[:idempotency_key]` by
-default. It caches only successful result shapes: `:ok`, `:unchanged`, and
-`{:ok, value}`.
+`CommandKit.Middleware.Idempotency` reads `:idempotency_key` from the
+command's metadata by default — set it with
+`CommandKit.Command.put_metadata(command, :idempotency_key, key)`. It caches
+only successful result shapes: `:ok`, `:unchanged`, and `{:ok, value}`.
 
 ```elixir
 {CommandKit.Middleware.Idempotency,
@@ -462,6 +471,9 @@ not perform idempotency lookup and simply continues.
 
 The cache key combines a fingerprint of the command data with the idempotency
 token, so the same token used with different command data does not collide.
+The fingerprint covers the command module and its declared params only —
+never `command_id` or metadata — so a retried command built fresh from the
+same params fingerprints identically.
 
 Custom stores must export:
 

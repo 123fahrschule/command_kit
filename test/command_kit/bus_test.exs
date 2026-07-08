@@ -2,7 +2,7 @@ defmodule CommandKit.BusTest do
   use ExUnit.Case, async: false
 
   defmodule CommandBase do
-    use CommandKit.Core.Command
+    use CommandKit.Core.Command, source: "de.123fahrschule:testapp"
   end
 
   defmodule Ping do
@@ -16,29 +16,35 @@ defmodule CommandKit.BusTest do
   end
 
   defmodule PingHandler do
-    def execute(command, metadata, context) do
+    def execute(command, context) do
       send(
-        metadata.test_pid,
-        {:handler3, command.id, CommandKit.Context.fetch!(context, {__MODULE__, :value})}
+        command.metadata[:test_pid],
+        {:handler2, command.id, CommandKit.Context.fetch!(context, {__MODULE__, :value})}
       )
 
-      {:ok, :handler3}
+      {:ok, :handler2}
     end
   end
 
-  defmodule Execute2Command do
+  defmodule Execute1Command do
     use CommandBase
 
     params do
       field :id, :integer
     end
 
-    handler(CommandKit.BusTest.Execute2Handler)
+    handler(CommandKit.BusTest.Execute1Handler)
   end
 
-  defmodule Execute2Handler do
-    def execute(command, metadata) do
-      send(metadata.test_pid, {:handler2, command.id})
+  defmodule Execute1Handler do
+    def execute(command) do
+      send(command.metadata[:test_pid], {:handler1, command.id})
+      {:ok, :handler1}
+    end
+
+    # execute/1 must win over execute/2 when both are exported
+    def execute(command, _context) do
+      send(command.metadata[:test_pid], {:handler2, command.id})
       {:ok, :handler2}
     end
   end
@@ -52,15 +58,15 @@ defmodule CommandKit.BusTest do
   end
 
   defmodule AlphaHandler do
-    def execute(command, metadata) do
-      send(metadata.test_pid, {:alpha, command.route})
+    def execute(command) do
+      send(command.metadata[:test_pid], {:alpha, command.route})
       {:ok, :alpha}
     end
   end
 
   defmodule BetaHandler do
-    def execute(command, metadata) do
-      send(metadata.test_pid, {:beta, command.route})
+    def execute(command) do
+      send(command.metadata[:test_pid], {:beta, command.route})
       {:ok, :beta}
     end
   end
@@ -91,6 +97,31 @@ defmodule CommandKit.BusTest do
     end
   end
 
+  defmodule MetadataMiddleware do
+    def call(pipeline, next, _opts) do
+      pipeline
+      |> CommandKit.Pipeline.put_metadata(:enriched, :by_middleware)
+      |> next.()
+    end
+  end
+
+  defmodule MetadataReadingHandler do
+    def execute(command) do
+      send(command.metadata[:test_pid], {:metadata_seen, command.metadata[:enriched]})
+      :ok
+    end
+  end
+
+  defmodule MetadataCommand do
+    use CommandBase
+
+    params do
+      field :id, :integer
+    end
+
+    handler(CommandKit.BusTest.MetadataReadingHandler)
+  end
+
   defmodule HaltMiddleware do
     def call(pipeline, _next, _opts), do: CommandKit.Pipeline.halt(pipeline, {:error, :halted})
   end
@@ -113,15 +144,27 @@ defmodule CommandKit.BusTest do
     :ok
   end
 
-  test "dispatch uses default pipeline and execute/3 when available" do
+  defp with_test_pid(command),
+    do: CommandKit.Command.put_metadata(command, :test_pid, self())
+
+  test "dispatch uses default pipeline and execute/2 receives the context" do
     Application.put_env(:command_kit, TestBus,
       default_pipeline: :default,
       pipelines: [default: [ContextMiddleware]]
     )
 
-    command = Ping.new!(id: 1)
-    assert {:ok, :handler3} = TestBus.dispatch(command, %{test_pid: self()})
-    assert_received {:handler3, 1, :from_context}
+    command = Ping.new!(id: 1) |> with_test_pid()
+    assert {:ok, :handler2} = TestBus.dispatch(command)
+    assert_received {:handler2, 1, :from_context}
+  end
+
+  test "dispatch prefers execute/1 over execute/2" do
+    Application.put_env(:command_kit, TestBus, pipelines: [default: []])
+
+    command = Execute1Command.new!(id: 2) |> with_test_pid()
+    assert {:ok, :handler1} = TestBus.dispatch(command)
+    assert_received {:handler1, 2}
+    refute_received {:handler2, _}
   end
 
   test "dispatch selects named pipeline and can halt" do
@@ -130,29 +173,29 @@ defmodule CommandKit.BusTest do
       pipelines: [default: [ContextMiddleware], system: [HaltMiddleware]]
     )
 
-    assert {:error, :halted} =
-             TestBus.dispatch(Ping.new!(id: 1), %{test_pid: self()}, pipeline: :system)
-
-    refute_received {:handler3, _, _}
+    command = Ping.new!(id: 1) |> with_test_pid()
+    assert {:error, :halted} = TestBus.dispatch(command, pipeline: :system)
+    refute_received {:handler2, _, _}
   end
 
-  test "dispatch falls back to execute/2" do
-    Application.put_env(:command_kit, TestBus, pipelines: [default: []])
+  test "middleware metadata changes are visible to the handler" do
+    Application.put_env(:command_kit, TestBus, pipelines: [default: [MetadataMiddleware]])
 
-    assert {:ok, :handler2} = TestBus.dispatch(Execute2Command.new!(id: 2), %{test_pid: self()})
-    assert_received {:handler2, 2}
+    command = MetadataCommand.new!(id: 1) |> with_test_pid()
+    assert :ok = TestBus.dispatch(command)
+    assert_received {:metadata_seen, :by_middleware}
   end
 
   test "dispatch can resolve handlers through protocol pattern matching" do
     Application.put_env(:command_kit, TestBus, pipelines: [default: []])
 
     assert {:ok, :alpha} =
-             TestBus.dispatch(RoutedCommand.new!(route: "alpha"), %{test_pid: self()})
+             TestBus.dispatch(RoutedCommand.new!(route: "alpha") |> with_test_pid())
 
     assert_received {:alpha, "alpha"}
 
     assert {:ok, :beta} =
-             TestBus.dispatch(RoutedCommand.new!(route: "beta"), %{test_pid: self()})
+             TestBus.dispatch(RoutedCommand.new!(route: "beta") |> with_test_pid())
 
     assert_received {:beta, "beta"}
   end
@@ -161,15 +204,15 @@ defmodule CommandKit.BusTest do
     Application.put_env(:command_kit, TestBus, pipelines: [default: []])
 
     assert_raise CommandKit.ConfigurationError, ~r/unknown CommandKit pipeline/, fn ->
-      TestBus.dispatch(Ping.new!(id: 1), %{}, pipeline: :missing)
+      TestBus.dispatch(Ping.new!(id: 1), pipeline: :missing)
     end
   end
 
   test "handler without supported execute function raises" do
     Application.put_env(:command_kit, TestBus, pipelines: [default: []])
 
-    assert_raise CommandKit.MissingHandlerFunctionError, fn ->
-      TestBus.dispatch(NoFunctionCommand.new!(id: 1), %{})
+    assert_raise CommandKit.MissingHandlerFunctionError, ~r/execute\/1 or execute\/2/, fn ->
+      TestBus.dispatch(NoFunctionCommand.new!(id: 1))
     end
   end
 

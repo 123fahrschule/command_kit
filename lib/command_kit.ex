@@ -6,7 +6,7 @@ defmodule CommandKit do
   A typical application defines a local command base module and a bus:
 
       defmodule MyApp.Command do
-        use CommandKit.Ecto.Command
+        use CommandKit.Ecto.Command, source: "de.123fahrschule:my_app"
       end
 
       defmodule MyApp.CommandBus do
@@ -15,6 +15,7 @@ defmodule CommandKit do
 
   Individual commands then use the application base module and can declare
   params and handlers without exposing implementation details such as Ecto
-  schemas or changesets.
+  schemas or changesets. Every command carries correlation metadata from
+  construction — see `CommandKit.Metadata`.
   """
 end

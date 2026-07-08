@@ -31,13 +31,13 @@ defmodule CommandKit.Bus do
       @command_kit_otp_app otp_app
 
       @doc "Dispatches a command through the configured default or selected pipeline."
-      def dispatch(command, metadata \\ %{}, opts \\ []) when is_struct(command) do
-        CommandKit.Bus.dispatch(__MODULE__, @command_kit_otp_app, command, metadata, opts)
+      def dispatch(command, opts \\ []) when is_struct(command) and is_list(opts) do
+        CommandKit.Bus.dispatch(__MODULE__, @command_kit_otp_app, command, opts)
       end
 
       @doc "Schedules a command with the configured async adapter."
-      def dispatch_async(command, metadata \\ %{}, opts \\ []) when is_struct(command) do
-        CommandKit.Bus.dispatch_async(__MODULE__, @command_kit_otp_app, command, metadata, opts)
+      def dispatch_async(command, opts \\ []) when is_struct(command) and is_list(opts) do
+        CommandKit.Bus.dispatch_async(__MODULE__, @command_kit_otp_app, command, opts)
       end
 
       @doc false
@@ -46,18 +46,18 @@ defmodule CommandKit.Bus do
   end
 
   @doc false
-  def dispatch(bus, otp_app, command, metadata, opts) do
+  def dispatch(bus, otp_app, command, opts) do
     config = config(otp_app, bus)
     pipeline_name = Keyword.get(opts, :pipeline, Keyword.get(config, :default_pipeline, :default))
     stack = pipeline_stack!(config, pipeline_name)
 
-    %Pipeline{command: command, metadata: metadata, bus: bus, pipeline: pipeline_name}
+    %Pipeline{command: command, bus: bus, pipeline: pipeline_name}
     |> run(stack)
     |> Map.fetch!(:result)
   end
 
   @doc false
-  def dispatch_async(bus, otp_app, command, metadata, opts) do
+  def dispatch_async(bus, otp_app, command, opts) do
     config = config(otp_app, bus)
     pipeline_name = Keyword.get(opts, :pipeline, Keyword.get(config, :default_pipeline, :default))
     async_adapter = Keyword.get(config, :async_adapter)
@@ -68,7 +68,7 @@ defmodule CommandKit.Bus do
     end
 
     {adapter, adapter_opts} = normalize_adapter(async_adapter)
-    adapter.schedule(bus, command, metadata, pipeline_name, Keyword.merge(adapter_opts, opts))
+    adapter.schedule(bus, command, pipeline_name, Keyword.merge(adapter_opts, opts))
   end
 
   defp config(otp_app, bus), do: Application.get_env(otp_app, bus, [])
@@ -147,11 +147,11 @@ defmodule CommandKit.Bus do
     Code.ensure_loaded?(handler)
 
     cond do
-      function_exported?(handler, :execute, 3) ->
-        handler.execute(pipeline.command, pipeline.metadata, pipeline.context)
+      function_exported?(handler, :execute, 1) ->
+        handler.execute(pipeline.command)
 
       function_exported?(handler, :execute, 2) ->
-        handler.execute(pipeline.command, pipeline.metadata)
+        handler.execute(pipeline.command, pipeline.context)
 
       true ->
         raise MissingHandlerFunctionError, handler: handler

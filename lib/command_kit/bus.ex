@@ -62,6 +62,7 @@ defmodule CommandKit.Bus do
     config = config(otp_app, bus)
     pipeline_name = Keyword.get(opts, :pipeline, Keyword.get(config, :default_pipeline, :default))
     async_adapter = Keyword.get(config, :async_adapter)
+    metadata = resolve_metadata(command, metadata)
 
     unless async_adapter do
       raise ConfigurationError,

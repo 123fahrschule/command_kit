@@ -5,7 +5,12 @@ defmodule CommandKit.Ecto.Command.Builder do
   alias CommandKit.ParamError
 
   def new(command_module, attrs) when is_atom(command_module) do
-    {metadata, attrs} = extract_metadata(attrs)
+    {metadata, attrs} =
+      if command_module.__command_kit_metadata_module__() do
+        extract_metadata(attrs)
+      else
+        {nil, attrs}
+      end
 
     with {:ok, attr_map} <- normalize_attrs(command_module, attrs),
          {:ok, values} <- cast_fields(command_module, attr_map),
@@ -39,15 +44,24 @@ defmodule CommandKit.Ecto.Command.Builder do
   end
 
   defp extract_metadata(attrs) when is_list(attrs), do: Keyword.pop(attrs, :metadata)
-  defp extract_metadata(attrs) when is_map(attrs), do: Map.pop(attrs, :metadata)
+
+  defp extract_metadata(attrs) when is_map(attrs) do
+    case Map.pop(attrs, :metadata) do
+      {nil, attrs} -> Map.pop(attrs, "metadata")
+      result -> result
+    end
+  end
 
   defp maybe_cast_metadata(_command_module, values, nil), do: {:ok, values}
 
   defp maybe_cast_metadata(command_module, values, metadata) do
-    meta_module = command_module.__command_kit_metadata_module__()
+    case command_module.__command_kit_metadata_module__() do
+      nil -> {:ok, values}
 
-    with {:ok, meta} <- cast_metadata(meta_module, metadata) do
-      {:ok, Map.put(values, :metadata, meta)}
+      meta_module ->
+        with {:ok, meta} <- cast_metadata(meta_module, metadata) do
+          {:ok, Map.put(values, :metadata, meta)}
+        end
     end
   end
 

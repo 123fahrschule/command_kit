@@ -97,7 +97,7 @@ Pass any key-value pairs under `:extra`:
 ```elixir
 MyCommand.new!(params,
   enacted_by: "user-1",
-  extra: %{tenant_id: "abc", ip_address: "1.2.3.4"}
+  extra: %{"tenant_id" => "abc", "ip_address" => "1.2.3.4"}
 )
 ```
 

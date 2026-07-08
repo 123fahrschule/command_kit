@@ -10,13 +10,15 @@ defmodule CommandKit.Serialization do
 
   @type job_args :: map()
 
-  @spec dump_job(module(), struct(), keyword() | map(), atom()) :: job_args()
+  @spec dump_job(module(), struct(), keyword() | map() | struct(), atom()) :: job_args()
   def dump_job(bus, command, metadata, pipeline) do
+    resolved_metadata = resolve_metadata_for_dump(command, metadata)
+
     %{
       "bus_module" => Atom.to_string(bus),
       "command_module" => Atom.to_string(command.__struct__),
       "params" => dump_command_params(command),
-      "metadata" => dump_metadata(metadata),
+      "metadata" => dump_metadata(resolved_metadata),
       "pipeline" => Atom.to_string(pipeline)
     }
   end
@@ -29,10 +31,33 @@ defmodule CommandKit.Serialization do
     params = load_command_params(command_module, Map.fetch!(args, "params"))
     metadata = load_metadata(Map.fetch!(args, "metadata"))
 
-    case command_module.new(params) do
+    meta_module = command_module.__command_kit_metadata_module__()
+
+    case build_command_with_metadata(command_module, params, metadata, meta_module) do
       {:ok, command} -> {bus, command, metadata, pipeline}
       {:error, error} -> raise SerializationError, message: Exception.message(error)
     end
+  end
+
+  defp resolve_metadata_for_dump(command, metadata) when metadata == %{} do
+    case Map.fetch(command, :metadata) do
+      {:ok, %{__struct__: _} = meta} -> Map.from_struct(meta)
+      _ -> metadata
+    end
+  end
+
+  defp resolve_metadata_for_dump(_command, %{__struct__: _} = metadata) do
+    Map.from_struct(metadata)
+  end
+
+  defp resolve_metadata_for_dump(_command, metadata), do: metadata
+
+  defp build_command_with_metadata(command_module, params, _metadata, nil) do
+    command_module.new(params)
+  end
+
+  defp build_command_with_metadata(command_module, params, metadata, _meta_module) do
+    command_module.new(params, metadata)
   end
 
   @spec dump_command_params(struct()) :: map()

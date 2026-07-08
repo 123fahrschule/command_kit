@@ -29,10 +29,10 @@ defmodule CommandKit.Metadata do
 
       cmd = MyApp.DoSomethingCommand.new!(attrs, %{enacted_by: "user-123"})
 
-  The handler receives the typed struct:
+  The handler receives the command with metadata inside:
 
-      def execute(%DoSomethingCommand{} = cmd, %MyApp.CommandMetadata{} = meta) do
-        meta.enacted_by
+      def execute(%DoSomethingCommand{} = cmd) do
+        cmd.metadata.enacted_by
       end
 
   ## Field options

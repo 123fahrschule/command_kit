@@ -11,11 +11,34 @@ defmodule CommandKit.Ecto.Command.Builder do
     end
   end
 
+  def new(command_module, attrs, metadata) when is_atom(command_module) do
+    meta_module = command_module.__command_kit_metadata_module__()
+
+    with {:ok, attr_map} <- normalize_attrs(command_module, attrs),
+         {:ok, values} <- cast_fields(command_module, attr_map),
+         {:ok, meta} <- cast_metadata(meta_module, metadata) do
+      {:ok, struct(command_module, Map.put(values, :metadata, meta))}
+    end
+  end
+
   def new!(command_module, attrs) do
     case new(command_module, attrs) do
       {:ok, command} -> command
       {:error, %CommandError{} = error} -> raise error
     end
+  end
+
+  def new!(command_module, attrs, metadata) do
+    case new(command_module, attrs, metadata) do
+      {:ok, command} -> command
+      {:error, %CommandError{} = error} -> raise error
+    end
+  end
+
+  defp cast_metadata(_meta_module, %{__struct__: _} = metadata), do: {:ok, metadata}
+
+  defp cast_metadata(meta_module, metadata) when is_atom(meta_module) do
+    CommandKit.Metadata.Builder.new(meta_module, metadata)
   end
 
   defp normalize_attrs(command_module, attrs) when is_list(attrs) do

@@ -50,6 +50,7 @@ defmodule CommandKit.Bus do
     config = config(otp_app, bus)
     pipeline_name = Keyword.get(opts, :pipeline, Keyword.get(config, :default_pipeline, :default))
     stack = pipeline_stack!(config, pipeline_name)
+    metadata = resolve_metadata(command, metadata)
 
     %Pipeline{command: command, metadata: metadata, bus: bus, pipeline: pipeline_name}
     |> run(stack)
@@ -70,6 +71,15 @@ defmodule CommandKit.Bus do
     {adapter, adapter_opts} = normalize_adapter(async_adapter)
     adapter.schedule(bus, command, metadata, pipeline_name, Keyword.merge(adapter_opts, opts))
   end
+
+  defp resolve_metadata(command, explicit_metadata) when explicit_metadata == %{} do
+    case Map.fetch(command, :metadata) do
+      {:ok, meta} when not is_nil(meta) -> meta
+      _ -> explicit_metadata
+    end
+  end
+
+  defp resolve_metadata(_command, explicit_metadata), do: explicit_metadata
 
   defp config(otp_app, bus), do: Application.get_env(otp_app, bus, [])
 
@@ -147,11 +157,14 @@ defmodule CommandKit.Bus do
     Code.ensure_loaded?(handler)
 
     cond do
-      function_exported?(handler, :execute, 3) ->
-        handler.execute(pipeline.command, pipeline.metadata, pipeline.context)
+      function_exported?(handler, :execute, 1) ->
+        handler.execute(pipeline.command)
 
       function_exported?(handler, :execute, 2) ->
         handler.execute(pipeline.command, pipeline.metadata)
+
+      function_exported?(handler, :execute, 3) ->
+        handler.execute(pipeline.command, pipeline.metadata, pipeline.context)
 
       true ->
         raise MissingHandlerFunctionError, handler: handler

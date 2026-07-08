@@ -1,52 +1,40 @@
-defmodule CommandKit.Core.Command.Builder do
+defmodule CommandKit.Metadata.Builder do
   @moduledoc false
 
   alias CommandKit.CommandError
   alias CommandKit.ParamError
 
-  def new(command_module, attrs) when is_atom(command_module) do
-    with {:ok, attr_map} <- normalize_attrs(command_module, attrs),
-         {:ok, values} <- cast_fields(command_module, attr_map) do
-      {:ok, struct(command_module, values)}
+  def new(meta_module, attrs) when is_atom(meta_module) do
+    attrs = attrs |> normalize_input() |> apply_defaults(meta_module)
+
+    with {:ok, attr_map} <- normalize_attrs(meta_module, attrs),
+         {:ok, values} <- cast_fields(meta_module, attr_map) do
+      {:ok, struct(meta_module, values)}
     end
   end
 
-  def new(command_module, attrs, metadata) when is_atom(command_module) do
-    meta_module = command_module.__command_kit_metadata_module__()
-
-    with {:ok, attr_map} <- normalize_attrs(command_module, attrs),
-         {:ok, values} <- cast_fields(command_module, attr_map),
-         {:ok, meta} <- cast_metadata(meta_module, metadata) do
-      {:ok, struct(command_module, Map.put(values, :metadata, meta))}
-    end
-  end
-
-  def new!(command_module, attrs) do
-    case new(command_module, attrs) do
-      {:ok, command} -> command
+  def new!(meta_module, attrs \\ %{}) do
+    case new(meta_module, attrs) do
+      {:ok, metadata} -> metadata
       {:error, %CommandError{} = error} -> raise error
     end
   end
 
-  def new!(command_module, attrs, metadata) do
-    case new(command_module, attrs, metadata) do
-      {:ok, command} -> command
-      {:error, %CommandError{} = error} -> raise error
-    end
+  defp normalize_input(attrs) when is_list(attrs), do: Map.new(attrs)
+  defp normalize_input(attrs) when is_map(attrs), do: attrs
+
+  defp apply_defaults(attrs, meta_module) do
+    Enum.reduce(meta_module.__command_kit_metadata_fields__(), attrs, fn field, acc ->
+      if field.has_default? and not Map.has_key?(acc, field.name) do
+        Map.put(acc, field.name, meta_module.__command_kit_metadata_default__(field.name))
+      else
+        acc
+      end
+    end)
   end
 
-  defp cast_metadata(_meta_module, %{__struct__: _} = metadata), do: {:ok, metadata}
-
-  defp cast_metadata(meta_module, metadata) when is_atom(meta_module) do
-    CommandKit.Metadata.Builder.new(meta_module, metadata)
-  end
-
-  defp normalize_attrs(command_module, attrs) when is_list(attrs) do
-    normalize_attrs(command_module, Map.new(attrs))
-  end
-
-  defp normalize_attrs(command_module, attrs) when is_map(attrs) do
-    fields = command_module.__command_kit_params__()
+  defp normalize_attrs(meta_module, attrs) do
+    fields = meta_module.__command_kit_metadata_fields__()
     names = MapSet.new(Enum.map(fields, & &1.name))
     string_names = MapSet.new(Enum.map(fields, &to_string(&1.name)))
 
@@ -63,7 +51,7 @@ defmodule CommandKit.Core.Command.Builder do
             error = %ParamError{
               path: [key],
               code: :unknown_field,
-              message: "is not declared by the command"
+              message: "is not declared by the metadata"
             }
 
             {normalized, [error | errors]}
@@ -73,28 +61,14 @@ defmodule CommandKit.Core.Command.Builder do
     if errors == [] do
       {:ok, normalized}
     else
-      {:error, %CommandError{command: command_module, errors: Enum.reverse(errors)}}
+      {:error, %CommandError{command: meta_module, errors: Enum.reverse(errors)}}
     end
   end
 
-  defp normalize_attrs(command_module, _attrs) do
-    {:error,
-     %CommandError{
-       command: command_module,
-       errors: [
-         %ParamError{
-           path: [],
-           code: :invalid_attributes,
-           message: "must be a map or keyword list"
-         }
-       ]
-     }}
-  end
-
-  defp cast_fields(command_module, attrs) do
+  defp cast_fields(meta_module, attrs) do
     {values, errors} =
-      Enum.reduce(command_module.__command_kit_params__(), {%{}, []}, fn field,
-                                                                         {values, errors} ->
+      Enum.reduce(meta_module.__command_kit_metadata_fields__(), {%{}, []}, fn field,
+                                                                               {values, errors} ->
         case cast_field(field, attrs) do
           {:ok, value} -> {Map.put(values, field.name, value), errors}
           {:error, error} -> {values, [error | errors]}
@@ -104,7 +78,7 @@ defmodule CommandKit.Core.Command.Builder do
     if errors == [] do
       {:ok, values}
     else
-      {:error, %CommandError{command: command_module, errors: Enum.reverse(errors)}}
+      {:error, %CommandError{command: meta_module, errors: Enum.reverse(errors)}}
     end
   end
 

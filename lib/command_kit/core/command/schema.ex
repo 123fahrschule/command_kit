@@ -3,10 +3,12 @@ defmodule CommandKit.Core.Command.Schema do
 
   defmacro __using__(opts) do
     builder = Keyword.get(opts, :builder, CommandKit.Core.Command.Builder)
+    metadata = Keyword.get(opts, :metadata, nil)
 
-    quote bind_quoted: [builder: builder] do
+    quote bind_quoted: [builder: builder, metadata: metadata] do
       @command_kit_builder builder
       @command_kit_handler nil
+      @command_kit_metadata metadata
 
       Module.register_attribute(__MODULE__, :command_kit_fields, accumulate: true)
 
@@ -63,9 +65,12 @@ defmodule CommandKit.Core.Command.Schema do
     field_names = Enum.map(fields, & &1.name)
     handler = Module.get_attribute(env.module, :command_kit_handler)
     builder = Module.get_attribute(env.module, :command_kit_builder)
+    metadata = Module.get_attribute(env.module, :command_kit_metadata)
+
+    struct_fields = if metadata, do: [:metadata | field_names], else: field_names
 
     quote do
-      defstruct unquote(field_names)
+      defstruct unquote(struct_fields)
 
       @doc "Builds a typed command struct from attributes."
       @spec new(map() | keyword()) :: {:ok, struct()} | {:error, CommandKit.CommandError.t()}
@@ -75,11 +80,25 @@ defmodule CommandKit.Core.Command.Schema do
       @spec new!(map() | keyword()) :: struct()
       def new!(attrs), do: unquote(builder).new!(__MODULE__, attrs)
 
+      if unquote(metadata) do
+        @doc "Builds a typed command struct with typed metadata."
+        @spec new(map() | keyword(), map() | keyword() | struct()) ::
+                {:ok, struct()} | {:error, CommandKit.CommandError.t()}
+        def new(attrs, metadata), do: unquote(builder).new(__MODULE__, attrs, metadata)
+
+        @doc "Builds a typed command struct with typed metadata or raises `CommandKit.CommandError`."
+        @spec new!(map() | keyword(), map() | keyword() | struct()) :: struct()
+        def new!(attrs, metadata), do: unquote(builder).new!(__MODULE__, attrs, metadata)
+      end
+
       @doc false
       def __command_kit_params__, do: unquote(Macro.escape(fields))
 
       @doc false
       def __command_kit_handler__, do: unquote(handler)
+
+      @doc false
+      def __command_kit_metadata_module__, do: unquote(metadata)
 
       @doc false
       def __command_kit_command__?, do: true

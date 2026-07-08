@@ -118,8 +118,9 @@ Declare the handler next to the command:
 handler MyApp.FundingRequests.RecordPayout
 ```
 
-The bus calls `execute/1` when the handler exports it. If the command carries
-metadata, access it via `command.metadata`:
+The bus dispatches to whichever arity the handler exports: `execute/1`,
+`execute/2`, or `execute/3`. Use `execute/1` when the command carries typed
+metadata inside:
 
 ```elixir
 def execute(command) do
@@ -128,9 +129,13 @@ def execute(command) do
 end
 ```
 
-For handlers that do not use typed metadata, the bus falls back to `execute/2`
-(with metadata as a plain map) and then `execute/3` (with metadata and runtime
-context). Prefer `execute/1` for new handlers.
+Use `execute/2` when metadata is passed separately, or `execute/3` when you
+also need runtime context.
+
+A handler module must export a single arity. If multiple arities are defined
+(e.g., for different commands), the bus picks the first match by priority:
+`execute/1` > `execute/2` > `execute/3`. Use separate handler modules when
+different commands require different arities.
 
 Handlers should return the command result, not the command itself. Recommended
 result shapes are `:ok`, `{:ok, value}`, and `{:error, reason}`.

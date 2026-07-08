@@ -40,9 +40,14 @@ defmodule CommandKit.Serialization do
   end
 
   defp resolve_metadata_for_dump(command, metadata) when metadata == %{} do
-    case Map.fetch(command, :metadata) do
-      {:ok, %{__struct__: _} = meta} -> Map.from_struct(meta)
-      _ -> metadata
+    if function_exported?(command.__struct__, :__command_kit_metadata_module__, 0) and
+         command.__struct__.__command_kit_metadata_module__() != nil do
+      case Map.fetch(command, :metadata) do
+        {:ok, %{__struct__: _} = meta} -> Map.from_struct(meta)
+        _ -> metadata
+      end
+    else
+      metadata
     end
   end
 

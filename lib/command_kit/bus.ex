@@ -74,9 +74,14 @@ defmodule CommandKit.Bus do
   end
 
   defp resolve_metadata(command, explicit_metadata) when explicit_metadata == %{} do
-    case Map.fetch(command, :metadata) do
-      {:ok, meta} when not is_nil(meta) -> meta
-      _ -> explicit_metadata
+    if function_exported?(command.__struct__, :__command_kit_metadata_module__, 0) and
+         command.__struct__.__command_kit_metadata_module__() != nil do
+      case Map.fetch(command, :metadata) do
+        {:ok, meta} when not is_nil(meta) -> meta
+        _ -> explicit_metadata
+      end
+    else
+      explicit_metadata
     end
   end
 

@@ -20,11 +20,23 @@ end
 
 ## Quickstart
 
+Define a metadata struct (optional):
+
+```elixir
+defmodule MyApp.CommandMetadata do
+  use CommandKit.Metadata
+
+  field :enacted_by,     :string,   optional: true
+  field :correlation_id, :string,   optional: true
+  field :occurred_at,    :datetime, default: DateTime.utc_now()
+end
+```
+
 Define an application command base:
 
 ```elixir
 defmodule MyApp.Command do
-  use CommandKit.Ecto.Command
+  use CommandKit.Ecto.Command, metadata: MyApp.CommandMetadata
 end
 ```
 
@@ -49,7 +61,8 @@ Define a handler:
 
 ```elixir
 defmodule MyApp.FundingRequests.RecordPayout do
-  def execute(command, metadata) do
+  def execute(command) do
+    command.metadata.enacted_by
     {:ok, %{payout_id: 123}}
   end
 end
@@ -90,15 +103,17 @@ Build and dispatch:
   MyApp.Commands.RecordPayout.new(%{
     "funding_request_id" => "42",
     "paid_on" => "2026-06-17",
-    "amount" => "120.00"
+    "amount" => "120.00",
+    "metadata" => %{enacted_by: "user-123"}
   })
 
-MyApp.CommandBus.dispatch(command, %{enacted_by: "system"})
+MyApp.CommandBus.dispatch(command)
 ```
 
 ## Guides
 
 - [Commands](docs/guides/commands.md)
+- [Metadata](docs/guides/metadata.md)
 - [Context](docs/guides/context.md)
 - [Pipelines and Middleware](docs/guides/pipelines-and-middleware.md)
 - [Async Dispatch](docs/guides/async.md)

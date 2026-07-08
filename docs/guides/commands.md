@@ -1,7 +1,8 @@
 # Commands
 
-Commands represent a single application intent. They contain command data only;
-caller metadata and execution services belong elsewhere.
+Commands represent a single application intent. They carry domain parameters and,
+optionally, a typed metadata struct with caller context such as `enacted_by` and
+`correlation_id`. Execution services belong in the runtime context instead.
 
 ## Command Base Modules
 
@@ -25,6 +26,16 @@ end
 `CommandKit.Ecto.Command` uses Ecto internally to cast adapter input such as
 form or JSON strings. Command modules do not expose `Ecto.Schema`,
 `embedded_schema`, or `changeset`.
+
+To attach a typed metadata struct to every command, pass the `metadata:` option:
+
+```elixir
+defmodule MyApp.Command do
+  use CommandKit.Ecto.Command, metadata: MyApp.CommandMetadata
+end
+```
+
+See the [Metadata guide](metadata.md) for how to define `MyApp.CommandMetadata`.
 
 ## Params
 
@@ -67,6 +78,20 @@ Command.new!(attrs)
 `new/1` returns `{:ok, command}` or `{:error, %CommandKit.CommandError{}}`.
 `new!/1` returns the command or raises the same `CommandKit.CommandError`.
 
+When the command base module has a `metadata:` module configured, metadata can
+be passed inline as the `:metadata` key:
+
+```elixir
+Command.new(%{field: value, metadata: %{enacted_by: "user-123"}})
+```
+
+or as a second argument (map, keyword, or already-built struct):
+
+```elixir
+Command.new(%{field: value}, %{enacted_by: "user-123"})
+Command.new(%{field: value}, MyApp.CommandMetadata.new!(%{enacted_by: "user-123"}))
+```
+
 Construction errors are command-level errors:
 
 ```elixir
@@ -93,16 +118,19 @@ Declare the handler next to the command:
 handler MyApp.FundingRequests.RecordPayout
 ```
 
-The bus calls `execute/3` when the handler exports it, otherwise it falls back
-to `execute/2`.
+The bus calls `execute/1` when the handler exports it. If the command carries
+metadata, access it via `command.metadata`:
 
 ```elixir
-def execute(command, metadata), do: :ok
-
-def execute(command, metadata, context), do: {:ok, %{id: 123}}
+def execute(command) do
+  command.metadata.enacted_by
+  {:ok, %{id: 123}}
+end
 ```
 
-Use `execute/3` only when the handler needs runtime context.
+For handlers that do not use typed metadata, the bus falls back to `execute/2`
+(with metadata as a plain map) and then `execute/3` (with metadata and runtime
+context). Prefer `execute/1` for new handlers.
 
 Handlers should return the command result, not the command itself. Recommended
 result shapes are `:ok`, `{:ok, value}`, and `{:error, reason}`.

@@ -13,7 +13,7 @@ tests with simple adapter-safe values.
 ```elixir
 def deps do
   [
-    {:command_kit, "~> 0.1.0"}
+    {:command_kit, "~> 0.1.1"}
   ]
 end
 ```

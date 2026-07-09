@@ -34,7 +34,7 @@ defmodule CommandKit.MixProject do
 
   defp deps do
     [
-      {:decimal, "~> 2.0"},
+      {:decimal, "~> 2.0 or ~> 3.0"},
       {:telemetry, "~> 1.0"},
       {:ecto, "~> 3.13", optional: true},
       {:oban, "~> 2.18", optional: true},

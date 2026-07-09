@@ -27,6 +27,17 @@ defmodule CommandKit.MiddlewareTest do
     def validate(_command), do: :ok
   end
 
+  defmodule MapPing do
+    use CommandBase
+
+    params do
+      field :id, :integer
+      field :payload, :map
+    end
+
+    handler(CommandKit.MiddlewareTest.PingHandler)
+  end
+
   defmodule RaisingHandler do
     def execute(_command), do: raise("boom")
   end
@@ -148,6 +159,38 @@ defmodule CommandKit.MiddlewareTest do
     assert_received {:ran, _}
 
     assert {:ok, ^id} = TestBus.dispatch(second)
+    refute_received {:ran, _}
+  end
+
+  test "fingerprint is insensitive to map construction history" do
+    Application.put_env(:command_kit, TestBus,
+      pipelines: [default: [CommandKit.Middleware.Idempotency]]
+    )
+
+    id = System.unique_integer([:positive])
+    key = "key-#{System.unique_integer([:positive])}"
+
+    # three equal payloads with different construction histories: built
+    # directly, shrunk from a larger map, and inserted in shuffled order
+    direct = Map.new(1..60, fn i -> {"k#{i}", i} end)
+
+    shrunk =
+      Map.new(1..100, fn i -> {"k#{i}", i} end)
+      |> then(fn map -> Enum.reduce(61..100, map, &Map.delete(&2, "k#{&1}")) end)
+
+    shuffled = Enum.reduce(Enum.shuffle(1..60), %{}, fn i, acc -> Map.put(acc, "k#{i}", i) end)
+
+    build = fn payload ->
+      MapPing.new!(id: id, payload: payload)
+      |> with_test_pid()
+      |> CommandKit.Command.put_metadata(:idempotency_key, key)
+    end
+
+    assert {:ok, ^id} = TestBus.dispatch(build.(direct))
+    assert_received {:ran, _}
+
+    assert {:ok, ^id} = TestBus.dispatch(build.(shrunk))
+    assert {:ok, ^id} = TestBus.dispatch(build.(shuffled))
     refute_received {:ran, _}
   end
 

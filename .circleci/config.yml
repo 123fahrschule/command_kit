@@ -1,0 +1,72 @@
+version: 2.1
+
+executors:
+  elixir:
+    parameters:
+      mix_env:
+        type: string
+        default: test
+    docker:
+      - image: cimg/elixir:1.19.5-erlang-27.2.2
+    environment:
+      MIX_ENV: << parameters.mix_env >>
+
+commands:
+  setup_mix:
+    steps:
+      - restore_cache:
+          keys:
+            - v1-mix-deps-{{ checksum "mix.lock" }}
+            - v1-mix-deps-
+      - run:
+          name: Install Hex and Rebar
+          command: |
+            mix local.hex --force
+            mix local.rebar --force
+      - run:
+          name: Fetch dependencies
+          command: mix deps.get
+      - save_cache:
+          key: v1-mix-deps-{{ checksum "mix.lock" }}
+          paths:
+            - deps
+
+jobs:
+  test:
+    executor: elixir
+    steps:
+      - checkout
+      - setup_mix
+      - run:
+          name: Compile, format, and test
+          command: mix check
+
+  dependency-audit:
+    executor: elixir
+    steps:
+      - checkout
+      - setup_mix
+      - run:
+          name: Audit Hex dependencies
+          command: mix hex.audit
+      - run:
+          name: Check for unused locked dependencies
+          command: mix deps.unlock --check-unused
+
+  docs:
+    executor:
+      name: elixir
+      mix_env: dev
+    steps:
+      - checkout
+      - setup_mix
+      - run:
+          name: Build docs with warnings as errors
+          command: mix docs --warnings-as-errors
+
+workflows:
+  ci:
+    jobs:
+      - test
+      - dependency-audit
+      - docs

@@ -1,5 +1,7 @@
 # CommandKit
 
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/123fahrschule/command_kit/tree/develop.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/123fahrschule/command_kit/tree/develop)
+
 CommandKit is a small Elixir library for typed commands, command handlers,
 named middleware pipelines, runtime execution context, telemetry, idempotency,
 and async dispatch.

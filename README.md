@@ -113,3 +113,43 @@ See the [Metadata guide](docs/guides/metadata.md).
 - [Async Dispatch](docs/guides/async.md)
 - [Testing](docs/guides/testing.md)
 - [Migrating an Existing Service](docs/guides/migration.md)
+
+## Running CircleCI Locally
+
+The project can run its CircleCI jobs locally with the CircleCI CLI and a local
+Docker daemon. On macOS with Apple Silicon, Colima works well when started as an
+`x86_64` VM because CircleCI convenience images are Linux `amd64` images.
+
+Install the required tools:
+
+```sh
+brew install circleci docker docker-compose colima lima-additional-guestagents
+```
+
+Start Colima:
+
+```sh
+colima start --arch x86_64 --vm-type vz --vz-rosetta --runtime docker --cpus 4 --memory 6 --disk 60
+```
+
+Verify Docker and the CircleCI config:
+
+```sh
+docker run --rm hello-world
+circleci config validate .circleci/config.yml
+```
+
+Run the test job locally:
+
+```sh
+circleci local execute test --temp-dir "$PWD/.circleci-local"
+```
+
+Use `--temp-dir "$PWD/.circleci-local"` so CircleCI's temporary config files are
+created inside the repository, where Colima can mount them. Do not pass
+`--docker-socket-path` for the Colima socket; CircleCI local execution works with
+Colima's active Docker context.
+
+CircleCI cache restore/save steps may print `not supported` during local
+execution. That is expected for local runs; the job continues with the real build
+steps.

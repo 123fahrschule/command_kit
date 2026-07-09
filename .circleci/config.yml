@@ -2,14 +2,8 @@ version: 2.1
 
 executors:
   elixir:
-    parameters:
-      mix_env:
-        type: string
-        default: test
     docker:
       - image: cimg/elixir:1.19.5-erlang-27.2.2
-    environment:
-      MIX_ENV: << parameters.mix_env >>
 
 commands:
   setup_mix:
@@ -34,6 +28,8 @@ commands:
 jobs:
   test:
     executor: elixir
+    environment:
+      MIX_ENV: test
     steps:
       - checkout
       - setup_mix
@@ -43,6 +39,8 @@ jobs:
 
   dependency-audit:
     executor: elixir
+    environment:
+      MIX_ENV: test
     steps:
       - checkout
       - setup_mix
@@ -54,9 +52,9 @@ jobs:
           command: mix deps.unlock --check-unused
 
   docs:
-    executor:
-      name: elixir
-      mix_env: dev
+    executor: elixir
+    environment:
+      MIX_ENV: dev
     steps:
       - checkout
       - setup_mix

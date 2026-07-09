@@ -51,6 +51,11 @@ defmodule CommandKit.Command do
     %{command | metadata: metadata}
   end
 
+  def with_metadata(%{metadata: %Metadata{}}, other) do
+    raise ArgumentError,
+          "with_metadata/2 expects a %CommandKit.Metadata{} struct, got: #{inspect(other)}"
+  end
+
   @doc """
   Sets the acting user or system on the command's metadata.
   """

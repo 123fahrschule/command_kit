@@ -3,5 +3,6 @@
 /deps/
 /doc/
 /.elixir_ls/
+/.circleci-local/
 erl_crash.dump
 *.ez

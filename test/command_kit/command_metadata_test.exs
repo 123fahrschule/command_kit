@@ -199,7 +199,7 @@ defmodule CommandKit.CommandMetadataTest do
     end
 
     test "rejects plain maps" do
-      assert_raise FunctionClauseError, fn ->
+      assert_raise ArgumentError, ~r/expects a %CommandKit.Metadata/, fn ->
         CommandKit.Command.with_metadata(new_command(), %{enacted_by: "user-1"})
       end
     end

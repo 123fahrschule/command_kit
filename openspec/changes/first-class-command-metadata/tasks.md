@@ -87,3 +87,6 @@
 - [x] 12.4 `from_cloud_event/2` validates the event-supplied `correlation_id` like every other fixed-field write
 - [x] 12.5 Docs: migration call-site example uses `new/1` + `with` (error-tuple flow); README clarifies `enacted_by` starts as `nil`; metadata guide wording aligned with direct `append_event(event, metadata)` style
 - [x] 12.6 JSON round-trip test guarded for Elixir >= 1.18 (library keeps supporting 1.17); shadow-proof test strengthened
+- [x] 12.7 Oban worker handles `:unchanged` explicitly and logs non-standard dispatch results instead of silently mapping them to `:ok` (deliberately NOT failing them — unknown shapes are tolerated success per result conventions, failing would retry successful commands)
+- [x] 12.8 `validate_source!` rejects whitespace-only sources; idempotency fingerprint uses `:erlang.term_to_binary([:deterministic])`
+- [x] 12.9 Symmetric reserved-field test through the Ecto base; explanatory comment on the nested base `__using__/1` macro

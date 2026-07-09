@@ -197,5 +197,15 @@ defmodule CommandKit.CommandDefinitionTest do
         end
       end
     end
+
+    assert_raise ArgumentError, ~r/:metadata is a reserved command field name/, fn ->
+      defmodule EctoReservedMetadataCommand do
+        use EctoCommand
+
+        params do
+          field :metadata, :map
+        end
+      end
+    end
   end
 end

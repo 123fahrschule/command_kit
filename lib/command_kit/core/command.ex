@@ -46,6 +46,10 @@ defmodule CommandKit.Core.Command do
 
       @command_kit_base_opts escaped_opts
 
+      # The base module installs its own __using__/1 on the application's
+      # command base so every command module inherits the base opts
+      # (:source, :builder). Merging happens here rather than in the Schema
+      # so per-command opts can be rejected — :source is application-wide.
       defmacro __using__(command_opts \\ []) do
         if Keyword.has_key?(command_opts, :source) do
           raise ArgumentError,
@@ -63,9 +67,17 @@ defmodule CommandKit.Core.Command do
   end
 
   @doc false
-  def validate_source!(source, _base_name) when is_binary(source) and source != "", do: source
+  def validate_source!(source, base_name) when is_binary(source) do
+    if String.trim(source) == "" do
+      invalid_source!(source, base_name)
+    else
+      source
+    end
+  end
 
-  def validate_source!(source, base_name) do
+  def validate_source!(source, base_name), do: invalid_source!(source, base_name)
+
+  defp invalid_source!(source, base_name) do
     raise ArgumentError, """
     #{base_name} requires a :source option with the application-wide URN prefix, \
     got: #{inspect(source)}

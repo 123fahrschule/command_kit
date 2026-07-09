@@ -47,6 +47,34 @@ defmodule CommandKit.AsyncTest do
     def execute(_command), do: {:error, :payout_rejected}
   end
 
+  defmodule UnchangedCommand do
+    use CommandBase
+
+    params do
+      field :id, :integer
+    end
+
+    handler(CommandKit.AsyncTest.UnchangedHandler)
+  end
+
+  defmodule UnchangedHandler do
+    def execute(_command), do: :unchanged
+  end
+
+  defmodule OddResultCommand do
+    use CommandBase
+
+    params do
+      field :id, :integer
+    end
+
+    handler(CommandKit.AsyncTest.OddResultHandler)
+  end
+
+  defmodule OddResultHandler do
+    def execute(command), do: %{id: command.id}
+  end
+
   defmodule TestBus do
     use CommandKit.Bus, otp_app: :command_kit
   end
@@ -202,6 +230,22 @@ defmodule CommandKit.AsyncTest do
 
     assert {:error, :payout_rejected} =
              CommandKit.Async.Oban.Worker.perform(%Oban.Job{args: args})
+  end
+
+  test "Oban worker treats non-error results as success" do
+    Application.put_env(:command_kit, TestBus, pipelines: [default: []])
+
+    unchanged = CommandKit.Serialization.dump_job(TestBus, UnchangedCommand.new!(id: 1), :default)
+    assert :ok = CommandKit.Async.Oban.Worker.perform(%Oban.Job{args: unchanged})
+
+    odd = CommandKit.Serialization.dump_job(TestBus, OddResultCommand.new!(id: 2), :default)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert :ok = CommandKit.Async.Oban.Worker.perform(%Oban.Job{args: odd})
+      end)
+
+    assert log =~ "non-standard dispatch result"
   end
 
   defp command(id) do

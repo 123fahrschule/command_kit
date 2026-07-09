@@ -80,6 +80,14 @@ defmodule CommandKit.CommandMetadataTest do
       end
     end
 
+    test "blank source on the base module is rejected" do
+      assert_raise ArgumentError, ~r/requires a :source option/, fn ->
+        defmodule BlankSourceBase do
+          use CommandKit.Core.Command, source: "   "
+        end
+      end
+    end
+
     test "per-command source override is rejected" do
       assert_raise ArgumentError, ~r/cannot be overridden per command/, fn ->
         defmodule OverridingCommand do

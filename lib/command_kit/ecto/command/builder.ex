@@ -7,6 +7,7 @@ defmodule CommandKit.Ecto.Command.Builder do
   def new(command_module, attrs) when is_atom(command_module) do
     with {:ok, attr_map} <- normalize_attrs(command_module, attrs),
          {:ok, values} <- cast_fields(command_module, attr_map) do
+      values = CommandKit.Command.__attach_identity__(command_module, values)
       {:ok, struct(command_module, values)}
     end
   end

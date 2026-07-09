@@ -2,15 +2,15 @@ defmodule CommandKit.CommandDefinitionTest do
   use ExUnit.Case, async: true
 
   defmodule CoreCommand do
-    use CommandKit.Core.Command
+    use CommandKit.Core.Command, source: "de.123fahrschule:testapp"
   end
 
   defmodule EctoCommand do
-    use CommandKit.Ecto.Command
+    use CommandKit.Ecto.Command, source: "de.123fahrschule:testapp"
   end
 
   defmodule Handler do
-    def execute(_command, _metadata), do: :ok
+    def execute(_command), do: :ok
   end
 
   defmodule RecordPayoutCore do
@@ -36,7 +36,7 @@ defmodule CommandKit.CommandDefinitionTest do
       field :paid_at, :datetime
       field :paid_amount, :decimal
       field :paid_reference, :string, optional: true
-      field :metadata, :map, optional: true
+      field :details, :map, optional: true
     end
 
     handler(CommandKit.CommandDefinitionTest.Handler)
@@ -112,7 +112,7 @@ defmodule CommandKit.CommandDefinitionTest do
                "paid_on" => "2026-06-17",
                "paid_at" => "2026-06-17T10:15:00Z",
                "paid_amount" => "42.50",
-               "metadata" => %{"source" => "test"}
+               "details" => %{"source" => "test"}
              })
 
     assert command.funding_request_id == 12
@@ -120,7 +120,7 @@ defmodule CommandKit.CommandDefinitionTest do
     assert command.paid_at == ~U[2026-06-17 10:15:00Z]
     assert command.paid_amount == Decimal.new("42.50")
     assert command.paid_reference == nil
-    assert command.metadata == %{"source" => "test"}
+    assert command.details == %{"source" => "test"}
   end
 
   test "ecto commands return command errors for invalid casts" do
@@ -143,6 +143,67 @@ defmodule CommandKit.CommandDefinitionTest do
 
         params do
           field :custom, :custom
+        end
+      end
+    end
+  end
+
+  test "both builders attach default metadata without any metadata calls" do
+    {:ok, core} =
+      RecordPayoutCore.new(%{
+        funding_request_id: 1,
+        paid_on: ~D[2026-06-17],
+        paid_amount: Decimal.new("1")
+      })
+
+    {:ok, ecto} =
+      RecordPayoutEcto.new(%{
+        funding_request_id: "1",
+        paid_on: "2026-06-17",
+        paid_at: "2026-06-17T10:15:00Z",
+        paid_amount: "1"
+      })
+
+    for command <- [core, ecto] do
+      name = command.__struct__.command_name()
+      urn = "de.123fahrschule:testapp:#{name}:#{command.command_id}"
+
+      assert %CommandKit.Metadata{} = command.metadata
+      assert command.metadata.causation_id == urn
+      assert command.metadata.correlation_id == urn
+      assert command.metadata.enacted_by == nil
+      assert %DateTime{} = command.metadata.occurred_at
+      assert command.metadata.occurred_at == command.metadata.received_at
+    end
+  end
+
+  test "reserved field names are rejected at definition time" do
+    assert_raise ArgumentError, ~r/:metadata is a reserved command field name/, fn ->
+      defmodule ReservedMetadataCommand do
+        use CoreCommand
+
+        params do
+          field :metadata, :map
+        end
+      end
+    end
+
+    assert_raise ArgumentError, ~r/:command_id is a reserved command field name/, fn ->
+      defmodule ReservedIdCommand do
+        use CoreCommand
+
+        params do
+          field :command_id, :string
+        end
+      end
+    end
+
+    assert_raise ArgumentError, ~r/:metadata is a reserved command field name/, fn ->
+      defmodule EctoReservedMetadataCommand do
+        use EctoCommand
+
+        params do
+          field :metadata, :map
         end
       end
     end

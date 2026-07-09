@@ -11,14 +11,14 @@ defmodule CommandKit.Async.TaskSupervisor do
   @behaviour CommandKit.Async.Adapter
 
   @impl true
-  def schedule(bus, command, metadata, pipeline, opts) do
+  def schedule(bus, command, pipeline, opts) do
     supervisor =
       Keyword.get(opts, :supervisor) ||
         raise CommandKit.ConfigurationError,
               "CommandKit.Async.TaskSupervisor requires :supervisor option"
 
     Task.Supervisor.start_child(supervisor, fn ->
-      bus.dispatch(command, metadata, pipeline: pipeline)
+      bus.dispatch(command, pipeline: pipeline)
     end)
   end
 end

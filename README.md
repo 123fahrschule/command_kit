@@ -20,11 +20,11 @@ end
 
 ## Quickstart
 
-Define an application command base:
+Define an application command base with your service's URN source:
 
 ```elixir
 defmodule MyApp.Command do
-  use CommandKit.Ecto.Command
+  use CommandKit.Ecto.Command, source: "de.123fahrschule:my_app"
 end
 ```
 
@@ -49,7 +49,8 @@ Define a handler:
 
 ```elixir
 defmodule MyApp.FundingRequests.RecordPayout do
-  def execute(command, metadata) do
+  def execute(command) do
+    command.metadata.enacted_by
     {:ok, %{payout_id: 123}}
   end
 end
@@ -83,7 +84,7 @@ config :my_app, MyApp.CommandBus,
   ]
 ```
 
-Build and dispatch:
+Build, enrich with metadata, and dispatch:
 
 ```elixir
 {:ok, command} =
@@ -93,13 +94,22 @@ Build and dispatch:
     "amount" => "120.00"
   })
 
-MyApp.CommandBus.dispatch(command, %{enacted_by: "system"})
+command
+|> CommandKit.Command.enacted_by("user-123")
+|> MyApp.CommandBus.dispatch()
 ```
+
+Every command carries correlation metadata (`causation_id`, `correlation_id`,
+`enacted_by`, `occurred_at`, `received_at`) from construction — `enacted_by`
+starts as `nil` and is set with `CommandKit.Command.enacted_by/2` as above.
+See the [Metadata guide](docs/guides/metadata.md).
 
 ## Guides
 
 - [Commands](docs/guides/commands.md)
+- [Metadata](docs/guides/metadata.md)
 - [Context](docs/guides/context.md)
 - [Pipelines and Middleware](docs/guides/pipelines-and-middleware.md)
 - [Async Dispatch](docs/guides/async.md)
 - [Testing](docs/guides/testing.md)
+- [Migrating an Existing Service](docs/guides/migration.md)

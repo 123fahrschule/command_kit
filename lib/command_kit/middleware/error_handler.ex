@@ -31,7 +31,7 @@ defmodule CommandKit.Middleware.ErrorHandler do
       command: pipeline.command.__struct__,
       bus: pipeline.bus,
       pipeline: pipeline.pipeline,
-      metadata: pipeline.metadata
+      metadata: CommandKit.Pipeline.metadata(pipeline)
     }
 
     case Keyword.get(opts, :reporter) do
@@ -39,6 +39,8 @@ defmodule CommandKit.Middleware.ErrorHandler do
         Logger.error(Exception.format(:error, error, stacktrace))
 
       reporter when is_atom(reporter) ->
+        Code.ensure_loaded?(reporter)
+
         cond do
           function_exported?(reporter, :report_exception, 3) ->
             reporter.report_exception(error, stacktrace, info)
